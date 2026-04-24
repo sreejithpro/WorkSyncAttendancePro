@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores employee profile information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["employee", "manager"] },
+        "department": { "type": "string" },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "AttendanceLog": {
+      "title": "Attendance Log",
+      "description": "Daily attendance records for employees.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string", "format": "email" },
+        "date": { "type": "string", "description": "ISO date string YYYY-MM-DD" },
+        "type": { "type": "string", "enum": ["WFO", "WFH", "LEAVE"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["userId", "userName", "userEmail", "date", "type", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Individual user profiles."
+    },
+    "/attendance/{logId}": {
+      "schema": "AttendanceLog",
+      "description": "All attendance logs. Queries typically filter by userId or date."
+    }
+  }
+}

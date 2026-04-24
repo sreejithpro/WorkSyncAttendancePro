@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    // Role check: explicitly looking up the user's role in the users collection
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isManager() {
+      return isSignedIn() && (
+        getUserRole() == 'manager' || 
+        request.auth.token.email == 'sreejithpro@gmail.com' // Bootstrapped Admin
+      );
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      function isValidUserProfile(data) {
+        return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+               data.keys().size() <= 6 &&
+               data.uid == request.auth.uid &&
+               data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+               data.email is string && data.email.size() <= 100 &&
+               data.role in ['employee', 'manager'] &&
+               (!('department' in data) || (data.department is string && data.department.size() <= 100)) &&
+               (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500));
+      }
+
+      allow get: if isOwner(userId) || isManager();
+      allow list: if isManager(); // Only managers can list all users
+      
+      allow create: if isOwner(userId) && 
+                      isValidUserProfile(incoming()) && 
+                      incoming().role == 'employee'; // Force default role on self-signup
+
+      allow update: if isOwner(userId) && 
+                      isValidUserProfile(incoming()) && 
+                      incoming().role == existing().role && // Prevent self-promotion
+                      incoming().diff(existing()).affectedKeys().hasOnly(['name', 'department', 'photoURL']);
+      
+      // Managers can promote others
+      allow update: if isManager() && 
+                      isValidUserProfile(incoming()) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['role']);
+    }
+
+    // --- Attendance Collection ---
+    match /attendance/{logId} {
+      function isValidAttendanceLog(data) {
+        return data.userId == request.auth.uid &&
+               data.date is string && data.date.matches('^202[4-9]-\\d{2}-\\d{2}$') &&
+               data.type in ['WFO', 'WFH', 'LEAVE'] &&
+               data.timestamp == request.time;
+      }
+
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
+      
+      allow create: if isSignedIn() && isValidAttendanceLog(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidAttendanceLog(incoming());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
+    }
+  }
+}
