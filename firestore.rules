@@ -61,15 +61,26 @@ service cloud.firestore {
         return data.userId == request.auth.uid &&
                data.date is string && data.date.matches('^202[4-9]-\\d{2}-\\d{2}$') &&
                data.type in ['WFO', 'WFH', 'LEAVE'] &&
-               data.timestamp == request.time;
+               data.timestamp == request.time &&
+               // Validate new optional fields
+               (!('userName' in data) || (data.userName is string && data.userName.size() <= 100)) &&
+               (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 100)) &&
+               (!('notes' in data) || (data.notes is string && data.notes.size() <= 500));
       }
 
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
       allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
       
-      allow create: if isSignedIn() && isValidAttendanceLog(incoming());
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidAttendanceLog(incoming());
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
+      allow create: if isSignedIn() && isValidId(logId) && (isValidAttendanceLog(incoming()) || request.auth.token.email == 'sreejithpro@gmail.com');
+      
+      allow update: if isSignedIn() && 
+                      isValidId(logId) &&
+                      (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com') && 
+                      (isValidAttendanceLog(incoming()) || request.auth.token.email == 'sreejithpro@gmail.com') &&
+                      // Ensure immutable fields don't change for non-admins
+                      (request.auth.token.email == 'sreejithpro@gmail.com' || (incoming().userId == existing().userId && incoming().date == existing().date));
+
+      allow delete: if isSignedIn() && isValidId(logId) && (resource.data.userId == request.auth.uid || request.auth.token.email == 'sreejithpro@gmail.com');
     }
   }
 }
